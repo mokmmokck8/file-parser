@@ -28,7 +28,20 @@ cd file-parser
 poetry install
 ```
 
-### 4. Run the development server
+### 4. Set up environment variables
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` to configure your environment:
+
+| Variable          | Default       | Description                                                                                 |
+| ----------------- | ------------- | ------------------------------------------------------------------------------------------- |
+| `ENV`             | `development` | Set to `production` to enable strict CORS origin checks                                     |
+| `ALLOWED_ORIGINS` | _(empty)_     | Comma-separated list of allowed origins (production only), e.g. `https://your-frontend.com` |
+
+### 5. Run the development server
 
 ```bash
 poetry run uvicorn main:app --reload
@@ -42,14 +55,19 @@ Interactive API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ```
 file-parser/
-├── main.py          # FastAPI application entry point
-├── pyproject.toml   # Project metadata and dependencies
-├── poetry.lock      # Locked dependency versions
+├── main.py            # FastAPI application entry point
+├── routers/
+│   └── upload.py      # File upload route
+├── .env               # Local environment variables (do not commit)
+├── .env.example       # Environment variable template (commit this)
+├── pyproject.toml     # Project metadata and dependencies
+├── poetry.lock        # Locked dependency versions
 └── README.md
 ```
 
 ## Available Endpoints
 
-| Method | Path | Description                |
-| ------ | ---- | -------------------------- |
-| GET    | `/`  | Health check / Hello World |
+| Method | Path      | Description                           |
+| ------ | --------- | ------------------------------------- |
+| GET    | `/`       | Health check / Hello World            |
+| POST   | `/upload` | Upload a file (accepted: image / PDF) |
