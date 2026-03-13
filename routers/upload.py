@@ -1,7 +1,7 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from services.llm import extract_company_name
+from services.llm import extract_document_info
 from services.ocr import extract_text_from_image_bytes
 
 router = APIRouter()
@@ -18,6 +18,9 @@ ALLOWED_CONTENT_TYPES = {
 
 class ParseResponse(BaseModel):
     companyName: str | None
+    entityIdentifier: str | None
+    countryISOCode: str | None
+    companyType: str | None
 
 
 @router.post("/upload", response_model=ParseResponse)
@@ -41,16 +44,24 @@ async def upload_file(file: UploadFile = File(...)) -> ParseResponse:
     print("================")
 
     if not ocr_text.strip():
-        return ParseResponse(companyName=None)
+        return ParseResponse(companyName=None, entityIdentifier=None, countryISOCode=None, companyType=None)
 
-    # Step 2: LLM — ask Qwen2.5:7b to identify the company name
+    # Step 2: LLM — ask Qwen2.5:7b to extract structured document info
     try:
-        company_name = await extract_company_name(ocr_text)
+        doc_info = await extract_document_info(ocr_text, filename=file.filename or "")
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM 推論失敗：{exc}") from exc
 
     print("=== LLM 結果 ===")
-    print(company_name)
+    print(f"companyName:      {doc_info.company_name}")
+    print(f"entityIdentifier: {doc_info.entity_identifier}")
+    print(f"countryISOCode:   {doc_info.country_iso_code}")
+    print(f"companyType:      {doc_info.company_type}")
     print("================")
 
-    return ParseResponse(companyName=company_name)
+    return ParseResponse(
+        companyName=doc_info.company_name,
+        entityIdentifier=doc_info.entity_identifier,
+        countryISOCode=doc_info.country_iso_code,
+        companyType=doc_info.company_type,
+    )

@@ -36,5 +36,13 @@ env/
 .coverage
 htmlcov/
 
+# Test files (keep directory structure but ignore actual test files)
+tests/test_files/*
+!tests/test_files/.gitkeep
+
+# Test results output
+test_results_*.csv
+test_results_*.json
+
 # Logs
 *.log

@@ -1,5 +1,6 @@
 import io
 import os
+import tempfile
 from typing import Any
 
 import numpy as np
@@ -25,15 +26,22 @@ def _get_ocr() -> Any:
     return _ocr_instance
 
 
+def _results_to_text(results: list[Any]) -> str:
+    """從 predict() 回傳的 OCRResult list 提取文字。"""
+    all_text: list[str] = []
+    for result in results or []:
+        rec_texts: list[str] = result.get("rec_texts", [])
+        page_text = "\n".join(rec_texts)
+        if page_text.strip():
+            all_text.append(page_text)
+    return "\n\n".join(all_text)
+
+
 def _image_to_text(image: Image.Image) -> str:
     ocr: Any = _get_ocr()
     img_array: NDArray[np.uint8] = np.array(image.convert("RGB"), dtype=np.uint8)
     results: list[Any] = ocr.predict(img_array)
-    lines: list[str] = []
-    for result in results:
-        rec_texts: list[str] = result.get("rec_texts", [])
-        lines.extend(rec_texts)
-    return "\n".join(lines)
+    return _results_to_text(results)
 
 
 def extract_text_from_image_bytes(content: bytes, content_type: str) -> str:
@@ -45,12 +53,14 @@ def extract_text_from_image_bytes(content: bytes, content_type: str) -> str:
 
 
 def _extract_text_from_pdf(content: bytes) -> str:
-    from pdf2image import convert_from_bytes  # type: ignore[import-untyped]
-
-    images: list[Image.Image] = convert_from_bytes(content, dpi=200)
-    all_text: list[str] = []
-    for img in images:
-        page_text = _image_to_text(img)
-        if page_text.strip():
-            all_text.append(page_text)
-    return "\n\n".join(all_text)
+    """直接讓 PaddleOCR predict() 處理 PDF，不需手動轉圖片。"""
+    ocr: Any = _get_ocr()
+    # predict() 需要檔案路徑，將 bytes 寫入暫存檔後傳入
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    try:
+        results: list[Any] = ocr.predict(tmp_path)
+        return _results_to_text(results)
+    finally:
+        os.remove(tmp_path)
