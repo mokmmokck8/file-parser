@@ -1,18 +1,17 @@
 # file-parser
 
-A FastAPI-based file parser service. Upload an image or PDF and the API will use **PaddleOCR** to extract text, then feed it to **Qwen2.5:7b** (via Ollama) to identify the company name.
+A FastAPI-based file parser service. Upload an image or PDF and the API will use **Qwen2.5-VL** (via Ollama) to directly extract structured company information from the document — no separate OCR step needed.
 
 ## Prerequisites
 
 - Python **3.13** (paddlepaddle does not yet support Python 3.14)
 - [Poetry](https://python-poetry.org/docs/#installation)
-- [Ollama](https://ollama.com) — must be running locally with `qwen2.5:7b` pulled
-- [poppler](https://poppler.freedesktop.org/) — required by `pdf2image` for PDF support
+- [Ollama](https://ollama.com) — must be running locally with `qwen2.5vl:7b` pulled
 
 ### Install system dependencies (macOS)
 
 ```bash
-brew install python@3.13 poppler
+brew install python@3.13
 ```
 
 ### Install and start Ollama
@@ -23,10 +22,10 @@ brew install python@3.13 poppler
 brew install ollama
 ```
 
-2. Pull the Qwen2.5 7B model:
+2. Pull the Qwen2.5-VL 7B model:
 
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen2.5vl:7b
 ```
 
 3. Start the Ollama server (runs on `http://localhost:11434` by default):
@@ -35,7 +34,7 @@ ollama pull qwen2.5:7b
 ollama serve
 ```
 
-> **Note:** Ollama must be running before you start the API server. If it is not running, LLM inference calls will return a `502` error.
+> **Note:** Ollama must be running before you start the API server. If it is not running, VLM inference calls will return a `502` error.
 
 ## Getting Started
 
@@ -67,13 +66,15 @@ cp .env.example .env
 
 Edit `.env` to configure your environment:
 
-| Variable          | Default                  | Description                                                                                 |
-| ----------------- | ------------------------ | ------------------------------------------------------------------------------------------- |
-| `ENV`             | `development`            | Set to `production` to enable strict CORS origin checks                                     |
-| `ALLOWED_ORIGINS` | _(empty)_                | Comma-separated list of allowed origins (production only), e.g. `https://your-frontend.com` |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Base URL of the Ollama server                                                               |
-| `OLLAMA_MODEL`    | `qwen2.5:7b`             | Ollama model name to use for company name extraction                                        |
-| `OLLAMA_TIMEOUT`  | `120`                    | Seconds to wait for an Ollama response before timing out                                    |
+| Variable           | Default                  | Description                                                                                 |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------- |
+| `ENV`              | `development`            | Set to `production` to enable strict CORS origin checks                                     |
+| `ALLOWED_ORIGINS`  | _(empty)_                | Comma-separated list of allowed origins (production only), e.g. `https://your-frontend.com` |
+| `OLLAMA_BASE_URL`  | `http://localhost:11434` | Base URL of the Ollama server                                                               |
+| `OLLAMA_MODEL`     | `qwen2.5vl:7b`           | Ollama model name (must be a vision-language model)                                         |
+| `OLLAMA_TIMEOUT`   | `300`                    | Seconds to wait for an Ollama response before timing out                                    |
+| `PDF_RENDER_SCALE` | `1.5`                    | PDF rasterisation scale factor (higher = better quality, more tokens)                       |
+| `VLM_JPEG_QUALITY` | `85`                     | JPEG quality when encoding pages for the VLM (1–95)                                         |
 
 ### 5. Run the development server
 
@@ -93,8 +94,8 @@ file-parser/
 ├── routers/
 │   └── upload.py      # File upload route
 ├── services/
-│   ├── ocr.py         # PaddleOCR text extraction (images & PDFs)
-│   └── llm.py         # Qwen2.5:7b via Ollama — company name extraction
+│   ├── ocr.py         # Document → base64 image conversion (PDF via PyMuPDF)
+│   └── llm.py         # Qwen2.5-VL via Ollama — direct vision extraction
 ├── tests/
 │   ├── test_batch.py  # Batch testing tool (see below)
 │   └── test_files/    # Place test files here (git-ignored except .gitkeep)
@@ -133,8 +134,8 @@ If the company name cannot be determined:
 | Status | Meaning                                           |
 | ------ | ------------------------------------------------- |
 | `415`  | Unsupported file type                             |
-| `500`  | OCR processing failed                             |
-| `502`  | Ollama is unreachable or the LLM inference failed |
+| `500`  | Document conversion failed (e.g. corrupt PDF)     |
+| `502`  | Ollama is unreachable or the VLM inference failed |
 
 ---
 

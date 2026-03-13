@@ -185,7 +185,6 @@ async def run_batch(
     """Process files with a semaphore-limited concurrency pool."""
     semaphore = asyncio.Semaphore(workers)
     results: list[FileResult | None] = [None] * len(files)
-    batch_start = time.perf_counter()
 
     async with httpx.AsyncClient() as client:
 
@@ -195,10 +194,9 @@ async def run_batch(
                 result = await send_file(client, path, url, timeout)
                 results[index] = result
 
-                elapsed = round(time.perf_counter() - batch_start, 1)
                 status_icon = "✅" if result["http_status"] == 200 else "❌"
                 print(
-                    f"[{elapsed:>7.1f}s] {status_icon} {result['filename']}"
+                    f"{status_icon} {result['filename']}"
                     f"  |  {result['file_size_kb']} KB"
                     f"  |  {result['resolution']}"
                     f"  |  {result['response_time_s']} s"

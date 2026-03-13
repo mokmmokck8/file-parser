@@ -2,7 +2,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from services.llm import extract_document_info
-from services.ocr import extract_text_from_image_bytes
+from services.ocr import document_to_images_b64
 
 router = APIRouter()
 
@@ -33,26 +33,24 @@ async def upload_file(file: UploadFile = File(...)) -> ParseResponse:
 
     contents = await file.read()
 
-    # Step 1: OCR — extract all text from the document
+    # Step 1: Convert document to base64 images (one per page for PDF)
     try:
-        ocr_text = extract_text_from_image_bytes(contents, file.content_type or "")
+        images_b64 = document_to_images_b64(contents, file.content_type or "")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"OCR 處理失敗：{exc}") from exc
+        raise HTTPException(status_code=500, detail=f"文件轉換失敗：{exc}") from exc
 
-    print("=== OCR 結果 ===")
-    print(ocr_text)
-    print("================")
+    print(f"=== 文件轉換完成：{len(images_b64)} 頁 ===")
 
-    if not ocr_text.strip():
+    if not images_b64:
         return ParseResponse(companyName=None, entityIdentifier=None, countryISOCode=None, companyType=None)
 
-    # Step 2: LLM — ask Qwen2.5:7b to extract structured document info
+    # Step 2: Send images directly to Qwen2.5-VL for structured extraction
     try:
-        doc_info = await extract_document_info(ocr_text, filename=file.filename or "")
+        doc_info = await extract_document_info(images_b64, filename=file.filename or "")
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM 推論失敗：{exc}") from exc
+        raise HTTPException(status_code=502, detail=f"VLM 推論失敗：{exc}") from exc
 
-    print("=== LLM 結果 ===")
+    print("=== VLM 結果 ===")
     print(f"companyName:      {doc_info.company_name}")
     print(f"entityIdentifier: {doc_info.entity_identifier}")
     print(f"countryISOCode:   {doc_info.country_iso_code}")

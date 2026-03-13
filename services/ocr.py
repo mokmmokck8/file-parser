@@ -1,66 +1,53 @@
+"""
+Document → base64 image conversion utilities.
+
+PDF pages and images are converted to JPEG base64 strings
+so they can be passed directly to the Qwen2.5-VL vision model.
+"""
+
+import base64
 import io
 import os
-import tempfile
-from typing import Any
 
-import numpy as np
-from numpy.typing import NDArray
 from PIL import Image
 
-os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
-
-_ocr_instance: Any = None
-
-
-def _get_ocr() -> Any:
-    global _ocr_instance
-    if _ocr_instance is None:
-        from paddleocr import PaddleOCR  # type: ignore[import-untyped]
-
-        _ocr_instance = PaddleOCR(
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-            lang="ch",  # supports Chinese + English
-        )
-    return _ocr_instance
+# Scale factor when rasterising PDF pages (1.5 ≈ 108 DPI, good balance of
+# quality vs. token cost for a 7 B vision model).
+_PDF_SCALE = float(os.getenv("PDF_RENDER_SCALE", "1.5"))
+# JPEG quality used when encoding pages / images for the vision model.
+_JPEG_QUALITY = int(os.getenv("VLM_JPEG_QUALITY", "85"))
 
 
-def _results_to_text(results: list[Any]) -> str:
-    """從 predict() 回傳的 OCRResult list 提取文字。"""
-    all_text: list[str] = []
-    for result in results or []:
-        rec_texts: list[str] = result.get("rec_texts", [])
-        page_text = "\n".join(rec_texts)
-        if page_text.strip():
-            all_text.append(page_text)
-    return "\n\n".join(all_text)
+def _image_to_b64(image: Image.Image) -> str:
+    """Convert a PIL Image to a base64-encoded JPEG string."""
+    buf = io.BytesIO()
+    image.convert("RGB").save(buf, format="JPEG", quality=_JPEG_QUALITY)
+    return base64.b64encode(buf.getvalue()).decode()
 
 
-def _image_to_text(image: Image.Image) -> str:
-    ocr: Any = _get_ocr()
-    img_array: NDArray[np.uint8] = np.array(image.convert("RGB"), dtype=np.uint8)
-    results: list[Any] = ocr.predict(img_array)
-    return _results_to_text(results)
+def document_to_images_b64(content: bytes, content_type: str) -> list[str]:
+    """
+    Convert an uploaded document to a list of base64 JPEG strings.
 
-
-def extract_text_from_image_bytes(content: bytes, content_type: str) -> str:
-    """Extract all text from an uploaded image or PDF using PaddleOCR."""
+    - PDF  → one entry per page (rendered via PyMuPDF)
+    - Image → single entry
+    """
     if content_type == "application/pdf":
-        return _extract_text_from_pdf(content)
+        return _pdf_to_images_b64(content)
     image = Image.open(io.BytesIO(content))
-    return _image_to_text(image)
+    return [_image_to_b64(image)]
 
 
-def _extract_text_from_pdf(content: bytes) -> str:
-    """直接讓 PaddleOCR predict() 處理 PDF，不需手動轉圖片。"""
-    ocr: Any = _get_ocr()
-    # predict() 需要檔案路徑，將 bytes 寫入暫存檔後傳入
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-    try:
-        results: list[Any] = ocr.predict(tmp_path)
-        return _results_to_text(results)
-    finally:
-        os.remove(tmp_path)
+def _pdf_to_images_b64(content: bytes) -> list[str]:
+    """Render every page of a PDF to a base64 JPEG string."""
+    import fitz  # type: ignore[import-untyped]  # pymupdf
+
+    doc = fitz.open(stream=content, filetype="pdf")
+    mat = fitz.Matrix(_PDF_SCALE, _PDF_SCALE)
+    pages: list[str] = []
+    for page in doc:  # type: ignore[union-attr]
+        pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)  # type: ignore[union-attr]
+        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)  # type: ignore[arg-type]
+        pages.append(_image_to_b64(img))
+    doc.close()
+    return pages
