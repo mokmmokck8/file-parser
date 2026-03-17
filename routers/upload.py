@@ -2,7 +2,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from services.llm import extract_document_info
-from services.ocr import document_to_images_b64
+from services.image_converter import document_to_images_b64
 
 router = APIRouter()
 
@@ -21,6 +21,7 @@ class ParseResponse(BaseModel):
     entityIdentifier: str | None
     countryISOCode: str | None
     companyType: str | None
+    incorporationDate: str | None
 
 
 @router.post("/upload", response_model=ParseResponse)
@@ -42,7 +43,7 @@ async def upload_file(file: UploadFile = File(...)) -> ParseResponse:
     print(f"=== 文件轉換完成：{len(images_b64)} 頁 ===")
 
     if not images_b64:
-        return ParseResponse(companyName=None, entityIdentifier=None, countryISOCode=None, companyType=None)
+        return ParseResponse(companyName=None, entityIdentifier=None, countryISOCode=None, companyType=None, incorporationDate=None)
 
     # Step 2: Send images directly to Qwen2.5-VL for structured extraction
     try:
@@ -55,6 +56,7 @@ async def upload_file(file: UploadFile = File(...)) -> ParseResponse:
     print(f"entityIdentifier: {doc_info.entity_identifier}")
     print(f"countryISOCode:   {doc_info.country_iso_code}")
     print(f"companyType:      {doc_info.company_type}")
+    print(f"incorporationDate:{doc_info.incorporation_date}")
     print("================")
 
     return ParseResponse(
@@ -62,4 +64,5 @@ async def upload_file(file: UploadFile = File(...)) -> ParseResponse:
         entityIdentifier=doc_info.entity_identifier,
         countryISOCode=doc_info.country_iso_code,
         companyType=doc_info.company_type,
+        incorporationDate=doc_info.incorporation_date,
     )

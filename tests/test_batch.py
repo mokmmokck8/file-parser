@@ -41,6 +41,7 @@ class FileResult(TypedDict):
     entityIdentifier: str | None
     countryISOCode: str | None
     companyType: str | None
+    incorporationDate: str | None
     error: str | None
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf"}
@@ -95,6 +96,7 @@ async def send_file(
         "entityIdentifier": None,
         "countryISOCode": None,
         "companyType": None,
+        "incorporationDate": None,
         "error": None,
     }
 
@@ -119,6 +121,7 @@ async def send_file(
             result["entityIdentifier"] = data.get("entityIdentifier")
             result["countryISOCode"] = data.get("countryISOCode")
             result["companyType"] = data.get("companyType")
+            result["incorporationDate"] = data.get("incorporationDate")
         else:
             result["error"] = response.text[:300]
 
@@ -210,6 +213,7 @@ async def run_batch(
                         f"  id={result['entityIdentifier']}"
                         f"  country={result['countryISOCode']}"
                         f"  type={result['companyType']}"
+                        f"  incorporated={result['incorporationDate']}"
                     )
 
         await asyncio.gather(*(bounded_send(i, f) for i, f in enumerate(files)))
