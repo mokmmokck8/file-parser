@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from starlette.middleware.base import RequestResponseEndpoint
 from dotenv import load_dotenv
-from routers import upload
+from routers import extract
 
 load_dotenv()
 
@@ -42,7 +42,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(upload.router)
+app.include_router(extract.router)
 
 
 @app.get("/")

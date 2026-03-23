@@ -92,13 +92,17 @@ Interactive API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 file-parser/
 ├── main.py            # FastAPI application entry point
 ├── routers/
-│   └── upload.py      # File upload route
+│   └── extract.py     # /extract/entity and /extract/individualProfile routes
 ├── services/
-│   ├── ocr.py         # Document → base64 image conversion (PDF via PyMuPDF)
-│   └── llm.py         # Qwen2.5-VL via Ollama — direct vision extraction
-├── tests/
-│   ├── test_batch.py  # Batch testing tool (see below)
-│   └── test_files/    # Place test files here (git-ignored except .gitkeep)
+│   ├── image_converter.py  # Document → base64 image conversion (PDF via PyMuPDF)
+│   └── llm.py              # Qwen2.5-VL via Ollama — structured extraction
+├── test/
+│   ├── entity_extraction/
+│   │   ├── test_batch.py   # Batch test for /extract/entity
+│   │   └── test_files/     # Place test files here (git-ignored except .gitkeep)
+│   └── individual_profile_extraction/
+│       ├── test_batch.py   # Batch test for /extract/individualProfile
+│       └── test_files/     # Place test files here (git-ignored except .gitkeep)
 ├── .env               # Local environment variables (do not commit)
 ├── .env.example       # Environment variable template (commit this)
 ├── pyproject.toml     # Project metadata and dependencies
@@ -108,25 +112,26 @@ file-parser/
 
 ## Available Endpoints
 
-| Method | Path      | Description                                        |
-| ------ | --------- | -------------------------------------------------- |
-| `GET`  | `/`       | Health check                                       |
-| `POST` | `/upload` | Upload an image or PDF to extract the company name |
+| Method | Path                         | Description                                      |
+| ------ | ---------------------------- | ------------------------------------------------ |
+| `GET`  | `/`                          | Health check                                     |
+| `POST` | `/extract/entity`            | Upload a document to extract company/entity info |
+| `POST` | `/extract/individualProfile` | Upload a document to extract individual profile  |
 
-### `POST /upload`
+### `POST /extract/entity`
 
 **Accepted file types:** `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `application/pdf`
 
 **Response:**
 
 ```json
-{ "companyName": "某某有限公司" }
-```
-
-If the company name cannot be determined:
-
-```json
-{ "companyName": null }
+{
+  "companyName": "ACME LIMITED",
+  "entityIdentifier": "12345678",
+  "countryISOCode": "HKG",
+  "companyType": "PRIVATE_COMPANY_LIMITED_BY_SHARES",
+  "incorporationDate": "2020-01-15"
+}
 ```
 
 **Error codes:**
@@ -139,103 +144,186 @@ If the company name cannot be determined:
 
 ---
 
-## Batch Testing (`test_batch.py`)
+### `POST /extract/individualProfile`
 
-`test_batch.py` 是一個批次測試工具，可以一次上傳多個檔案到後端，並記錄每個檔案的測試結果。
+**Accepted file types:** `image/jpeg`, `image/png`, `image/gif`, `image/webp`, `application/pdf`
 
-### 準備測試檔案
+**Response:**
 
-將要測試的圖片或 PDF 放入 `tests/test_files/` 資料夾（此資料夾內容不會被 git 追蹤）：
-
-```bash
-cp /your/images/*.jpg ./tests/test_files/
-cp /your/docs/*.pdf   ./tests/test_files/
+```json
+{
+  "name": "JOHN DOE",
+  "idType": "PASSPORT",
+  "idNumber": "A12345678",
+  "nationality": "HKG",
+  "dateOfBirth": "1990-05-20",
+  "idIssueDate": "2015-03-01",
+  "idExpiryDate": "2025-03-01",
+  "residentialAddress": "1 Example Street, Hong Kong",
+  "correspondenceAddress": "1 Example Street, Hong Kong"
+}
 ```
 
-支援的格式：`.jpg`、`.jpeg`、`.png`、`.gif`、`.webp`、`.pdf`
+**Error codes:** same as `/extract/entity` above.
 
-### 執行方式
+---
 
-確保後端已啟動（`poetry run uvicorn main:app --reload`），再執行：
+## Batch Testing
+
+每個 endpoint 都有各自的批次測試腳本，位於 `test/` 資料夾下。腳本會一次上傳多個檔案到後端，並把每個檔案的測試結果輸出成 CSV 或 JSON。
+
+### 前置準備
+
+確保後端已啟動：
+
+```bash
+poetry run uvicorn main:app --reload
+```
+
+### 測試 `/extract/entity`
+
+將要測試的圖片或 PDF 放入 `test/entity_extraction/test_files/`（此資料夾內容不會被 git 追蹤）：
+
+```bash
+cp /your/docs/*.jpg ./test/entity_extraction/test_files/
+```
+
+執行測試：
 
 ```bash
 # 基本執行（循序、輸出 CSV）
-poetry run python tests/test_batch.py
+poetry run python test/entity_extraction/test_batch.py
 
-# 自訂資料夾
-poetry run python tests/test_batch.py --dir ./tests/test_files
-
-# 3 個並行請求、輸出 JSON
-poetry run python tests/test_batch.py --workers 3 --format json
+# 自訂資料夾與並行數
+poetry run python test/entity_extraction/test_batch.py --workers 3 --format json
 
 # 完整參數範例
-poetry run python tests/test_batch.py \
-  --dir ./tests/test_files \
-  --url http://localhost:8000/upload \
-  --output ./results/run1 \
+poetry run python test/entity_extraction/test_batch.py \
+  --dir ./test/entity_extraction/test_files \
+  --url http://localhost:8000/extract/entity \
+  --output ./results/entity_run1 \
   --format csv \
   --workers 2 \
   --timeout 120
 ```
 
-### 參數說明
+### 測試 `/extract/individualProfile`
 
-| 參數        | 預設值                         | 說明                       |
-| ----------- | ------------------------------ | -------------------------- |
-| `--dir`     | `./tests/test_files`           | 測試檔案資料夾             |
-| `--url`     | `http://localhost:8000/upload` | 後端上傳 URL               |
-| `--output`  | `./test_results_<timestamp>`   | 輸出檔案路徑（不含副檔名） |
-| `--format`  | `csv`                          | 輸出格式：`csv` 或 `json`  |
-| `--workers` | `1`                            | 並行請求數                 |
-| `--timeout` | `60`                           | 每個請求的 timeout（秒）   |
+將要測試的圖片或 PDF 放入 `test/individual_profile_extraction/test_files/`：
+
+```bash
+cp /your/id_docs/*.jpg ./test/individual_profile_extraction/test_files/
+```
+
+執行測試：
+
+```bash
+# 基本執行（循序、輸出 CSV）
+poetry run python test/individual_profile_extraction/test_batch.py
+
+# 自訂資料夾與並行數
+poetry run python test/individual_profile_extraction/test_batch.py --workers 3 --format json
+
+# 完整參數範例
+poetry run python test/individual_profile_extraction/test_batch.py \
+  --dir ./test/individual_profile_extraction/test_files \
+  --url http://localhost:8000/extract/individualProfile \
+  --output ./results/profile_run1 \
+  --format csv \
+  --workers 2 \
+  --timeout 120
+```
+
+### 參數說明（兩個腳本通用）
+
+| 參數        | entity 預設值                          | individualProfile 預設值                          | 說明                       |
+| ----------- | -------------------------------------- | ------------------------------------------------- | -------------------------- |
+| `--dir`     | `./test_files`                         | `./test_files`                                    | 測試檔案資料夾             |
+| `--url`     | `http://localhost:8000/extract/entity` | `http://localhost:8000/extract/individualProfile` | 後端 URL                   |
+| `--output`  | `./test_results_<timestamp>`           | `./test_results_<timestamp>`                      | 輸出檔案路徑（不含副檔名） |
+| `--format`  | `csv`                                  | `csv`                                             | 輸出格式：`csv` 或 `json`  |
+| `--workers` | `1`                                    | `1`                                               | 並行請求數                 |
+| `--timeout` | `300`                                  | `300`                                             | 每個請求的 timeout（秒）   |
+
+支援的格式：`.jpg`、`.jpeg`、`.png`、`.gif`、`.webp`、`.pdf`
 
 ### 記錄欄位
 
-| 欄位               | 說明                                    |
-| ------------------ | --------------------------------------- |
-| `filename`         | 檔案名稱                                |
-| `file_size_kb`     | 檔案大小（KB）                          |
-| `resolution`       | 圖片解析度（`WxH`）；PDF 顯示 `N/A`     |
-| `response_time_ms` | 後端回應時間（毫秒）                    |
-| `http_status`      | HTTP 狀態碼                             |
-| `companyName`      | 回應：公司名稱                          |
-| `entityIdentifier` | 回應：公司識別碼                        |
-| `countryISOCode`   | 回應：國家 ISO 代碼                     |
-| `companyType`      | 回應：公司類型                          |
-| `error`            | 錯誤訊息（請求失敗或 timeout 時才有值） |
+**Entity extraction：**
+
+| 欄位                | 說明                                    |
+| ------------------- | --------------------------------------- |
+| `filename`          | 檔案名稱                                |
+| `file_size_kb`      | 檔案大小（KB）                          |
+| `resolution`        | 圖片解析度（`WxH`）；PDF 顯示 `N/A`     |
+| `response_time_s`   | 後端回應時間（秒）                      |
+| `http_status`       | HTTP 狀態碼                             |
+| `companyName`       | 公司名稱                                |
+| `entityIdentifier`  | 公司識別碼                              |
+| `countryISOCode`    | 國家 ISO 代碼                           |
+| `companyType`       | 公司類型                                |
+| `incorporationDate` | 成立日期                                |
+| `error`             | 錯誤訊息（請求失敗或 timeout 時才有值） |
+
+**Individual profile extraction：**
+
+| 欄位                    | 說明                                    |
+| ----------------------- | --------------------------------------- |
+| `filename`              | 檔案名稱                                |
+| `file_size_kb`          | 檔案大小（KB）                          |
+| `resolution`            | 圖片解析度（`WxH`）；PDF 顯示 `N/A`     |
+| `response_time_s`       | 後端回應時間（秒）                      |
+| `http_status`           | HTTP 狀態碼                             |
+| `name`                  | 姓名                                    |
+| `idType`                | 證件類型                                |
+| `idNumber`              | 證件號碼                                |
+| `nationality`           | 國籍（ISO alpha-3）                     |
+| `dateOfBirth`           | 出生日期                                |
+| `idIssueDate`           | 證件簽發日期                            |
+| `idExpiryDate`          | 證件到期日期                            |
+| `residentialAddress`    | 住宅地址                                |
+| `correspondenceAddress` | 通訊地址                                |
+| `error`                 | 錯誤訊息（請求失敗或 timeout 時才有值） |
 
 ### 執行範例輸出
 
 ```
 ============================================================
-🚀  File Parser — Batch Test
+🚀  File Parser — Individual Profile Batch Test
 ============================================================
-  Target URL  : http://localhost:8000/upload
-  Test folder : /Users/you/workspace/file-parser/test_files
-  Files found : 3
+  Target URL  : http://localhost:8000/extract/individualProfile
+  Test folder : /Users/you/workspace/file-parser/test/individual_profile_extraction/test_files
+  Files found : 2
   Workers     : 1
-  Timeout     : 60.0s
-  Output      : /Users/you/workspace/file-parser/test_results_20260313_120000.csv
+  Timeout     : 300.0s
+  Output      : /Users/you/workspace/file-parser/test_results_20260323_120000.csv
 ============================================================
 
-[1/3] ✅ sample1.jpg  |  142.35 KB  |  1200x900  |  3201.4 ms  |  HTTP 200
-         company=ABC Holdings Ltd  id=12345678  country=HK  type=Limited
-[2/3] ✅ sample2.png  |  88.10 KB   |  800x600   |  2874.0 ms  |  HTTP 200
-         company=XYZ Corp  id=null  country=US  type=Corporation
-[3/3] ❌ broken.pdf   |  5.20 KB    |  N/A       |  None ms    |  HTTP None
-         ⚠️  Error: Timeout after 60.0s
+🔍 Testing: passport_sample.jpg
+✅ passport_sample.jpg  |  210.45 KB  |  1800x1200  |  4.32 s  |  HTTP 200
+           name=JOHN DOE  idType=PASSPORT  idNumber=A12345678  nationality=HKG  dob=1990-05-20
+           issueDate=2015-03-01  expiryDate=2025-03-01
+           residentialAddress=1 Example Street, Hong Kong
+           correspondenceAddress=1 Example Street, Hong Kong
+
+🔍 Testing: national_id.png
+✅ national_id.png  |  98.20 KB  |  1024x768  |  3.87 s  |  HTTP 200
+           name=JANE SMITH  idType=NATIONAL_ID  idNumber=B98765432  nationality=GBR  dob=1985-11-03
+           issueDate=2018-06-15  expiryDate=2028-06-14
+           residentialAddress=10 Downing Street, London
+           correspondenceAddress=10 Downing Street, London
 
 ============================================================
 📊  Test Summary
 ============================================================
-  Total files     : 3
+  Total files     : 2
   ✅ Success       : 2
-  ❌ Failed        : 1
-  Avg response    : 3037.7 ms
-  Min response    : 2874.0 ms
-  Max response    : 3201.4 ms
-  Total wall time : 9.08 s
+  ❌ Failed        : 0
+  Avg response    : 4.10 s
+  Min response    : 3.87 s
+  Max response    : 4.32 s
+  Total wall time : 8.19 s
 ============================================================
 
-💾  Results saved to: /Users/you/workspace/file-parser/test_results_20260313_120000.csv
+💾  Results saved to: /Users/you/workspace/file-parser/test_results_20260323_120000.csv
 ```

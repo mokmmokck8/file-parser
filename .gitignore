@@ -37,8 +37,10 @@ env/
 htmlcov/
 
 # Test files (keep directory structure but ignore actual test files)
-tests/test_files/*
-!tests/test_files/.gitkeep
+test/entity_extraction/test_files/*
+!test/entity_extraction/test_files/.gitkeep
+test/individual_profile_extraction/test_files/*
+!test/individual_profile_extraction/test_files/.gitkeep
 
 # Test results output
 test_results_*.csv

@@ -22,13 +22,21 @@ import argparse
 import asyncio
 import csv
 import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
 import httpx
+from dotenv import load_dotenv
 from PIL import Image
+
+load_dotenv(Path(__file__).parents[2] / ".env")
+
+# Mirror the OLLAMA_TIMEOUT from .env, plus a 30 s buffer so the test client
+# never times out before the backend does.
+_DEFAULT_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "300")) + 30
 
 
 class FileResult(TypedDict):
@@ -228,8 +236,8 @@ def main() -> None:
     parser.add_argument(
         "--dir",
         type=Path,
-        default=Path("./tests/test_files"),
-        help="Directory containing files to test (default: ./tests/test_files)",
+        default=Path(__file__).parent / "test_files",
+        help="Directory containing files to test (default: ./test_files)",
     )
     parser.add_argument(
         "--url",
@@ -257,8 +265,8 @@ def main() -> None:
     parser.add_argument(
         "--timeout",
         type=float,
-        default=300.0,
-        help="Per-request timeout in seconds (default: 300)",
+        default=_DEFAULT_TIMEOUT,
+        help=f"Per-request timeout in seconds (default: OLLAMA_TIMEOUT + 30s = {_DEFAULT_TIMEOUT})",
     )
     args = parser.parse_args()
 
