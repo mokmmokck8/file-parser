@@ -5,6 +5,10 @@ from typing import Any
 import httpx
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+
+class OllamaTimeoutError(Exception):
+    """Raised when the Ollama inference call exceeds OLLAMA_TIMEOUT."""
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5vl:7b")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "300"))
 # Maximum number of pages to send to the VLM. Company info is almost always
@@ -67,12 +71,15 @@ async def extract_document_info(images_b64: list[str], filename: str = "") -> Do
         "format": "json",
     }
 
-    async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-        response = await client.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json=payload,
-        )
-        response.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json=payload,
+            )
+            response.raise_for_status()
+    except httpx.TimeoutException as exc:
+        raise OllamaTimeoutError() from exc
 
     data: dict[str, Any] = response.json()
     raw_content: str = data["message"]["content"]
@@ -155,12 +162,15 @@ async def extract_individual_profile(images_b64: list[str], filename: str = "") 
         "format": "json",
     }
 
-    async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-        response = await client.post(
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json=payload,
-        )
-        response.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json=payload,
+            )
+            response.raise_for_status()
+    except httpx.TimeoutException as exc:
+        raise OllamaTimeoutError() from exc
 
     data: dict[str, Any] = response.json()
     raw_content: str = data["message"]["content"]

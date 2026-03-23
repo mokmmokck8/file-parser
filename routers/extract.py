@@ -1,7 +1,7 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from services.llm import extract_document_info, extract_individual_profile
+from services.llm import OllamaTimeoutError, extract_document_info, extract_individual_profile
 from services.image_converter import document_to_images_b64
 
 router = APIRouter()
@@ -65,6 +65,8 @@ async def extract_entity(file: UploadFile = File(...)) -> EntityResponse:
     # Send images to Qwen2.5-VL for structured extraction
     try:
         doc_info = await extract_document_info(images_b64, filename=file.filename or "")
+    except OllamaTimeoutError:
+        raise HTTPException(status_code=504, detail="VLM 推論逾時，請稍後再試。")
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"VLM 推論失敗：{exc}") from exc
 
@@ -99,6 +101,8 @@ async def extract_individual(file: UploadFile = File(...)) -> IndividualProfileR
     # Send images to Qwen2.5-VL for structured extraction
     try:
         profile = await extract_individual_profile(images_b64, filename=file.filename or "")
+    except OllamaTimeoutError:
+        raise HTTPException(status_code=504, detail="VLM 推論逾時，請稍後再試。")
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"VLM 推論失敗：{exc}") from exc
 

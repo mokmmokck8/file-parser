@@ -2,7 +2,7 @@ import asyncio
 import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from starlette.middleware.base import RequestResponseEndpoint
 from dotenv import load_dotenv
 from routers import extract
@@ -25,11 +25,6 @@ app = FastAPI()
 
 @app.middleware("http")
 async def limit_concurrency(request: Request, call_next: RequestResponseEndpoint) -> Response:
-    if _concurrency_semaphore._value == 0:  # noqa: SLF001
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "伺服器繁忙，目前已有 2 個請求在處理中，請稍後再試。"},
-        )
     async with _concurrency_semaphore:
         return await call_next(request)
 
