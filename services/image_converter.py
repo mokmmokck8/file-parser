@@ -16,6 +16,21 @@ from PIL import Image
 _PDF_SCALE = float(os.getenv("PDF_RENDER_SCALE", "1.5"))
 # JPEG quality used when encoding pages / images for the vision model.
 _JPEG_QUALITY = int(os.getenv("VLM_JPEG_QUALITY", "85"))
+# Maximum dimension (width or height) for images sent to the VLM.
+_IMAGE_MAX_SIZE = int(os.getenv("VLM_IMAGE_MAX_SIZE", "1200"))
+
+
+def _thumbnail_image(image: Image.Image, max_size: int = _IMAGE_MAX_SIZE) -> Image.Image:
+    """
+    Proportionally downscale *image* so neither dimension exceeds *max_size*.
+    If the image is already within the limit it is returned unchanged.
+    Uses LANCZOS resampling for best quality.
+    """
+    if image.width <= max_size and image.height <= max_size:
+        return image
+    image = image.copy()
+    image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+    return image
 
 
 def _image_to_b64(image: Image.Image) -> str:
@@ -35,6 +50,7 @@ def document_to_images_b64(content: bytes, content_type: str) -> list[str]:
     if content_type == "application/pdf":
         return _pdf_to_images_b64(content)
     image = Image.open(io.BytesIO(content))
+    image = _thumbnail_image(image)
     return [_image_to_b64(image)]
 
 
